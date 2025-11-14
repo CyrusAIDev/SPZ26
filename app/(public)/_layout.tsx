@@ -1,4 +1,5 @@
 import { Stack } from "expo-router";
+import { Platform } from "react-native";
 
 export default function PublicLayout() {
   return (
@@ -7,14 +8,14 @@ export default function PublicLayout() {
         name="welcome"
         options={{
           title: "Welcome",
-          headerTransparent: true,
+          headerTransparent: Platform.OS === "ios",
         }}
       />
       <Stack.Screen
         name="sign-up"
         options={{
           title: "Sign Up",
-          headerTransparent: true,
+          headerTransparent: Platform.OS === "ios",
           headerLargeTitle: true,
           headerBackButtonDisplayMode: "minimal",
         }}
@@ -23,7 +24,7 @@ export default function PublicLayout() {
         name="sign-in"
         options={{
           title: "Sign In",
-          headerTransparent: true,
+          headerTransparent: Platform.OS === "ios",
           headerLargeTitle: true,
           headerBackButtonDisplayMode: "minimal",
         }}

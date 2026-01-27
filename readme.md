@@ -49,6 +49,36 @@ bun install
 npx expo start --clear --reset-cache
 ```
 
+7. Running on iOS Simulator
+
+The project uses a development build (not Expo Go). To run on iOS:
+
+```bash
+npx expo run:ios
+```
+
+This will:
+- Generate the native iOS project in the `/ios` directory
+- Install CocoaPods dependencies
+- Build and install the app on the iOS simulator
+- Start Metro bundler
+
+**Note**: If you encounter build errors related to SDK versions or simulators, you have a few options:
+
+- **Option A (Recommended)**: Use Xcode directly
+  1. Open the workspace: `open ios/exposupabasestarter.xcworkspace`
+  2. Select a simulator from the device dropdown
+  3. Press Cmd+R to build and run
+
+- **Option B**: Switch to Expo Go for development
+  1. In the Metro terminal, press `s` to switch to Expo Go
+  2. Press `i` to open in iOS simulator
+  3. Note: Expo Go works for most features but some native modules may not be available
+
+- **Option C**: For Xcode beta users
+  - If using Xcode beta, ensure the iOS SDK version matches your simulator runtime
+  - Download additional runtimes from Xcode > Settings > Platforms if needed
+
 ## Contributing
 
 Contributions to this starter project are highly encouraged and welcome! If you have any suggestions, bug reports, or feature requests, please feel free to create an issue or submit a pull request. Let's work together to enhance the developer experience and make it easier for everyone to build exceptional Expo applications with Supabase.

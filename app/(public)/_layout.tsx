@@ -11,24 +11,6 @@ export default function PublicLayout() {
           headerTransparent: Platform.OS === "ios",
         }}
       />
-      <Stack.Screen
-        name="sign-up"
-        options={{
-          title: "Sign Up",
-          headerTransparent: Platform.OS === "ios",
-          headerLargeTitle: true,
-          headerBackButtonDisplayMode: "minimal",
-        }}
-      />
-      <Stack.Screen
-        name="sign-in"
-        options={{
-          title: "Sign In",
-          headerTransparent: Platform.OS === "ios",
-          headerLargeTitle: true,
-          headerBackButtonDisplayMode: "minimal",
-        }}
-      />
     </Stack>
   );
 }

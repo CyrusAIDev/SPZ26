@@ -9,8 +9,8 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSupabase } from '@/hooks/useSupabase'
-import { getGroup, getGroupMembers } from '@/lib/supabase-helpers'
-import { Group } from '@/types/database.types'
+import { getGroup, getGroupMembers, getGroupActivities } from '@/lib/supabase-helpers'
+import { Group, ActivityWithDetails } from '@/types/database.types'
 
 type GroupMemberWithUser = {
   id: string
@@ -31,6 +31,7 @@ export default function GroupScreen() {
   const [loading, setLoading] = useState(true)
   const [group, setGroup] = useState<Group | null>(null)
   const [members, setMembers] = useState<GroupMemberWithUser[]>([])
+  const [activities, setActivities] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -64,6 +65,16 @@ export default function GroupScreen() {
         throw membersError
       }
       setMembers((membersData as GroupMemberWithUser[]) || [])
+
+      // Fetch group activities
+      const { data: activitiesData, error: activitiesError } = await getGroupActivities(
+        supabase,
+        groupId
+      )
+      if (activitiesError) {
+        console.error('Load activities error:', activitiesError)
+      }
+      setActivities(activitiesData || [])
     } catch (err: any) {
       console.error('Load group error:', err)
       setError(err.message || 'Failed to load group')
@@ -123,10 +134,12 @@ export default function GroupScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionsGrid}>
-          <TouchableOpacity style={styles.actionCard}>
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={() => router.push(`/activity/add?groupId=${groupId}`)}
+          >
             <Text style={styles.actionIcon}>➕</Text>
             <Text style={styles.actionTitle}>Add Activity</Text>
-            <Text style={styles.actionSubtitle}>Coming soon</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionCard}>
@@ -147,6 +160,50 @@ export default function GroupScreen() {
             <Text style={styles.actionSubtitle}>Coming soon</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Activities Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          Activities {activities.length > 0 && `(${activities.length})`}
+        </Text>
+        
+        {activities.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateIcon}>📝</Text>
+            <Text style={styles.emptyStateTitle}>No activities yet</Text>
+            <Text style={styles.emptyStateText}>
+              Add your first activity to get started!
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyStateButton}
+              onPress={() => router.push(`/activity/add?groupId=${groupId}`)}
+            >
+              <Text style={styles.emptyStateButtonText}>Add Activity</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.activitiesCard}>
+            {activities.map((activity: any) => (
+              <TouchableOpacity
+                key={activity.id}
+                style={styles.activityRow}
+                onPress={() => router.push(`/activity/${activity.id}`)}
+              >
+                <View style={styles.activityContent}>
+                  <Text style={styles.activityTitle}>{activity.title}</Text>
+                  <Text style={styles.activityMeta}>
+                    By {activity.users?.display_name || 'Unknown'}
+                    {activity.activity_schedules?.[0]?.start_at && 
+                      ` • ${new Date(activity.activity_schedules[0].start_at).toLocaleDateString()}`
+                    }
+                  </Text>
+                </View>
+                <Text style={styles.activityChevron}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Members Section */}
@@ -374,5 +431,80 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 40,
+  },
+  emptyState: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  emptyStateIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  emptyStateButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  emptyStateButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  activitiesCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  activityMeta: {
+    fontSize: 13,
+    color: '#666',
+  },
+  activityChevron: {
+    fontSize: 24,
+    color: '#CCC',
+    marginLeft: 8,
   },
 })

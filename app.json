@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "expo-supabase-starter",
+    "scheme": "groupactivity",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "platforms": [
@@ -14,7 +14,8 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.flemingvincent.expo-supabase-starter"
+      "bundleIdentifier": "com.flemingvincent.expo-supabase-starter",
+      "associatedDomains": ["applinks:groupactivity.app"]
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +23,24 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.flemingvincent.exposupabasestarter"
+      "package": "com.flemingvincent.exposupabasestarter",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "groupactivity.app",
+              "pathPrefix": "/invite"
+            },
+            {
+              "scheme": "groupactivity"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "plugins": [
       "expo-router",

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
@@ -8,9 +8,15 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 import { useSupabase } from '@/hooks/useSupabase'
-import { getActivity, deleteActivity } from '@/lib/supabase-helpers'
+import { getActivityWithRatings, deleteActivity, getUserRating } from '@/lib/supabase-helpers'
+import { StarRating } from '@/app/components/ui/StarRating'
+import { RatingCard } from '@/app/components/RatingCard'
+import { RateActivityModal } from '@/app/components/RateActivityModal'
+import { ActivityRating } from '@/types/database.types'
 
 export default function ActivityDetailScreen() {
   const { activityId } = useLocalSearchParams<{ activityId: string }>()
@@ -21,10 +27,14 @@ export default function ActivityDetailScreen() {
   const [activity, setActivity] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [showRatingModal, setShowRatingModal] = useState(false)
+  const [userRating, setUserRating] = useState<ActivityRating | null>(null)
 
-  useEffect(() => {
-    loadActivity()
-  }, [activityId])
+  useFocusEffect(
+    useCallback(() => {
+      loadActivity()
+    }, [activityId])
+  )
 
   const loadActivity = async () => {
     if (!activityId) {
@@ -37,13 +47,19 @@ export default function ActivityDetailScreen() {
       setLoading(true)
       setError(null)
 
-      const { data, error: activityError } = await getActivity(supabase, activityId)
+      const { data, error: activityError } = await getActivityWithRatings(supabase, activityId)
       
       if (activityError || !data) {
         throw activityError || new Error('Activity not found')
       }
 
       setActivity(data)
+
+      // Load user's rating
+      if (session?.user?.id) {
+        const { data: rating } = await getUserRating(supabase, activityId, session.user.id)
+        setUserRating(rating)
+      }
     } catch (err: any) {
       console.error('Load activity error:', err)
       setError(err.message || 'Failed to load activity')
@@ -94,6 +110,14 @@ export default function ActivityDetailScreen() {
   }
 
   const isCreator = session?.user?.id === activity?.created_by
+  
+  const handleRatingSuccess = () => {
+    loadActivity()
+  }
+
+  const handleOpenRating = () => {
+    setShowRatingModal(true)
+  }
 
   if (loading) {
     return (
@@ -125,12 +149,29 @@ export default function ActivityDetailScreen() {
     : null
 
   return (
-    <ScrollView style={styles.container}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ScrollView style={styles.container}>
+        {/* Back Button */}
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.headerLeft}>
             <Text style={styles.activityTitle}>{activity.title}</Text>
+            {activity.average_rating !== null && (
+              <View style={styles.ratingPreview}>
+                <StarRating rating={activity.average_rating} size={18} showNumber />
+                <Text style={styles.ratingsCount}>
+                  ({activity.ratings_count} {activity.ratings_count === 1 ? 'rating' : 'ratings'})
+                </Text>
+              </View>
+            )}
             <Text style={styles.createdBy}>
               By {activity.users?.display_name || 'Unknown'}
             </Text>
@@ -194,12 +235,19 @@ export default function ActivityDetailScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionsCard}>
-          <TouchableOpacity style={styles.actionRow}>
+          <TouchableOpacity style={styles.actionRow} onPress={handleOpenRating}>
             <Text style={styles.actionIcon}>⭐</Text>
             <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Rate this activity</Text>
-              <Text style={styles.actionSubtitle}>Coming soon</Text>
+              <Text style={styles.actionTitle}>
+                {userRating ? 'Update Your Rating' : 'Rate this activity'}
+              </Text>
+              {userRating && (
+                <View style={styles.userRatingPreview}>
+                  <StarRating rating={userRating.stars} size={14} />
+                </View>
+              )}
             </View>
+            <Text style={styles.actionChevron}>›</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionRow}>
@@ -222,25 +270,64 @@ export default function ActivityDetailScreen() {
 
       {/* Ratings Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Ratings</Text>
-        <View style={styles.ratingsCard}>
-          <Text style={styles.ratingsEmptyIcon}>⭐</Text>
-          <Text style={styles.ratingsEmptyTitle}>No ratings yet</Text>
-          <Text style={styles.ratingsEmptyText}>
-            Be the first to rate this activity
-          </Text>
-        </View>
+        <Text style={styles.sectionTitle}>
+          Ratings {activity.ratings_count > 0 && `(${activity.ratings_count})`}
+        </Text>
+        {activity.activity_ratings && activity.activity_ratings.length > 0 ? (
+          <View style={styles.ratingsListContainer}>
+            {activity.activity_ratings.map((rating: any) => (
+              <RatingCard
+                key={rating.id}
+                rating={rating}
+                isCurrentUser={rating.user_id === session?.user?.id}
+              />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.ratingsCard}>
+            <Text style={styles.ratingsEmptyIcon}>⭐</Text>
+            <Text style={styles.ratingsEmptyTitle}>No ratings yet</Text>
+            <Text style={styles.ratingsEmptyText}>
+              Be the first to rate this activity
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.bottomSpacing} />
-    </ScrollView>
+      </ScrollView>
+
+      {/* Rating Modal */}
+      <RateActivityModal
+        visible={showRatingModal}
+        onClose={() => setShowRatingModal(false)}
+        activityId={activityId!}
+        activityTitle={activity.title}
+        groupId={activity.group_id}
+        existingRating={userRating}
+        onSuccess={handleRatingSuccess}
+      />
+    </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+  },
+  container: {
+    flex: 1,
+  },
+  backButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#F8F9FA',
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '600',
   },
   centerContainer: {
     flex: 1,
@@ -326,6 +413,27 @@ const styles = StyleSheet.create({
   createdAt: {
     fontSize: 12,
     color: '#999',
+  },
+  ratingPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginVertical: 8,
+  },
+  ratingsCount: {
+    fontSize: 14,
+    color: '#666',
+  },
+  userRatingPreview: {
+    marginTop: 4,
+  },
+  actionChevron: {
+    fontSize: 24,
+    color: '#9CA3AF',
+    marginLeft: 8,
+  },
+  ratingsListContainer: {
+    gap: 12,
   },
   section: {
     padding: 20,

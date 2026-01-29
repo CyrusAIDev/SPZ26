@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js'
-import { Database, RedeemInviteResult, CreateGroupResult } from '@/types/database.types'
+import { Database, RedeemInviteResult, CreateGroupResult, ActivityRatingInsert } from '@/types/database.types'
 
 /**
  * Sign in anonymously with Supabase
@@ -223,7 +223,7 @@ export async function getUserProfile(supabase: SupabaseClient<Database>) {
 }
 
 /**
- * Get all activities for a group
+ * Get all activities for a group with average ratings
  */
 export async function getGroupActivities(
   supabase: SupabaseClient<Database>,
@@ -247,13 +247,31 @@ export async function getGroupActivities(
         users:created_by (
           id,
           display_name
+        ),
+        activity_ratings (
+          stars
         )
       `)
       .eq('group_id', groupId)
       .order('created_at', { ascending: false })
 
     if (error) throw error
-    return { data, error: null }
+    
+    // Compute average rating for each activity
+    const activitiesWithRatings = data?.map(activity => {
+      const ratings = activity.activity_ratings || []
+      const averageRating = ratings.length > 0
+        ? ratings.reduce((sum, r) => sum + r.stars, 0) / ratings.length
+        : null
+      
+      return {
+        ...activity,
+        average_rating: averageRating,
+        ratings_count: ratings.length,
+      }
+    })
+    
+    return { data: activitiesWithRatings, error: null }
   } catch (error) {
     console.error('Get group activities error:', error)
     return { data: null, error }
@@ -417,6 +435,193 @@ export async function addActivitySchedule(
     return { data, error: null }
   } catch (error) {
     console.error('Add activity schedule error:', error)
+    return { data: null, error }
+  }
+}
+
+// ==================== RATINGS ====================
+
+/**
+ * Get all ratings for an activity
+ */
+export async function getActivityRatings(
+  supabase: SupabaseClient<Database>,
+  activityId: string
+) {
+  try {
+    const { data, error } = await supabase
+      .from('activity_ratings')
+      .select(`
+        *,
+        users:user_id (
+          id,
+          display_name
+        )
+      `)
+      .eq('activity_id', activityId)
+      .order('rated_at', { ascending: false })
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Get activity ratings error:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get a specific user's rating for an activity
+ */
+export async function getUserRating(
+  supabase: SupabaseClient<Database>,
+  activityId: string,
+  userId: string
+) {
+  try {
+    const { data, error } = await supabase
+      .from('activity_ratings')
+      .select('*')
+      .eq('activity_id', activityId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Get user rating error:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Create or update a rating (upsert)
+ * If the user already has a rating for this activity, it will be updated
+ */
+export async function createOrUpdateRating(
+  supabase: SupabaseClient<Database>,
+  activityId: string,
+  groupId: string,
+  stars: number,
+  note?: string,
+  ratedAt?: string
+) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('No authenticated user')
+
+    const ratingData: ActivityRatingInsert = {
+      activity_id: activityId,
+      group_id: groupId,
+      user_id: user.id,
+      stars,
+      note: note?.trim() || null,
+      rated_at: ratedAt || new Date().toISOString(),
+    }
+
+    // Use upsert to handle both create and update
+    const { data, error } = await supabase
+      .from('activity_ratings')
+      .upsert(ratingData, {
+        onConflict: 'activity_id,user_id'
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Create/update rating error:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Delete a rating
+ */
+export async function deleteRating(
+  supabase: SupabaseClient<Database>,
+  ratingId: string
+) {
+  try {
+    const { error } = await supabase
+      .from('activity_ratings')
+      .delete()
+      .eq('id', ratingId)
+
+    if (error) throw error
+    return { error: null }
+  } catch (error) {
+    console.error('Delete rating error:', error)
+    return { error }
+  }
+}
+
+/**
+ * Get activity with all ratings and computed average
+ */
+export async function getActivityWithRatings(
+  supabase: SupabaseClient<Database>,
+  activityId: string
+) {
+  try {
+    // Get activity data
+    const { data: activity, error: activityError } = await supabase
+      .from('activities')
+      .select(`
+        *,
+        activity_categories (
+          id,
+          name
+        ),
+        activity_schedules (
+          id,
+          start_at,
+          end_at,
+          timezone,
+          created_by
+        ),
+        users:created_by (
+          id,
+          display_name
+        )
+      `)
+      .eq('id', activityId)
+      .single()
+
+    if (activityError) throw activityError
+
+    // Get ratings with user info
+    const { data: ratings, error: ratingsError } = await supabase
+      .from('activity_ratings')
+      .select(`
+        *,
+        users:user_id (
+          id,
+          display_name
+        )
+      `)
+      .eq('activity_id', activityId)
+      .order('rated_at', { ascending: false })
+
+    if (ratingsError) throw ratingsError
+
+    // Compute average rating
+    const ratingsArray = ratings || []
+    const averageRating = ratingsArray.length > 0
+      ? ratingsArray.reduce((sum, r) => sum + r.stars, 0) / ratingsArray.length
+      : null
+
+    return {
+      data: {
+        ...activity,
+        activity_ratings: ratingsArray,
+        average_rating: averageRating,
+        ratings_count: ratingsArray.length,
+      },
+      error: null,
+    }
+  } catch (error) {
+    console.error('Get activity with ratings error:', error)
     return { data: null, error }
   }
 }

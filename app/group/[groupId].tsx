@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
@@ -8,9 +8,11 @@ import {
   TouchableOpacity,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 import { useSupabase } from '@/hooks/useSupabase'
 import { getGroup, getGroupMembers, getGroupActivities } from '@/lib/supabase-helpers'
 import { Group, ActivityWithDetails } from '@/types/database.types'
+import { StarRating } from '@/app/components/ui/StarRating'
 
 type GroupMemberWithUser = {
   id: string
@@ -33,10 +35,13 @@ export default function GroupScreen() {
   const [members, setMembers] = useState<GroupMemberWithUser[]>([])
   const [activities, setActivities] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
 
-  useEffect(() => {
-    loadGroupData()
-  }, [groupId])
+  useFocusEffect(
+    useCallback(() => {
+      loadGroupData()
+    }, [groupId])
+  )
 
   const loadGroupData = async () => {
     if (!groupId) {
@@ -46,27 +51,34 @@ export default function GroupScreen() {
     }
 
     try {
-      setLoading(true)
+      // Only show blocking loading on initial load
+      if (isInitialLoad) {
+        setLoading(true)
+      }
       setError(null)
 
-      // Fetch group details
-      const { data: groupData, error: groupError } = await getGroup(supabase, groupId)
-      if (groupError || !groupData) {
-        throw groupError || new Error('Group not found')
-      }
-      setGroup(groupData)
+      // On initial load: fetch everything
+      // On subsequent loads: only refresh activities (background)
+      if (isInitialLoad) {
+        // Fetch group details
+        const { data: groupData, error: groupError } = await getGroup(supabase, groupId)
+        if (groupError || !groupData) {
+          throw groupError || new Error('Group not found')
+        }
+        setGroup(groupData)
 
-      // Fetch group members
-      const { data: membersData, error: membersError } = await getGroupMembers(
-        supabase,
-        groupId
-      )
-      if (membersError) {
-        throw membersError
+        // Fetch group members
+        const { data: membersData, error: membersError } = await getGroupMembers(
+          supabase,
+          groupId
+        )
+        if (membersError) {
+          throw membersError
+        }
+        setMembers((membersData as GroupMemberWithUser[]) || [])
       }
-      setMembers((membersData as GroupMemberWithUser[]) || [])
 
-      // Fetch group activities
+      // Always refresh activities (even on subsequent loads)
       const { data: activitiesData, error: activitiesError } = await getGroupActivities(
         supabase,
         groupId
@@ -75,11 +87,18 @@ export default function GroupScreen() {
         console.error('Load activities error:', activitiesError)
       }
       setActivities(activitiesData || [])
+
+      // Mark initial load as complete
+      if (isInitialLoad) {
+        setIsInitialLoad(false)
+      }
     } catch (err: any) {
       console.error('Load group error:', err)
       setError(err.message || 'Failed to load group')
     } finally {
-      setLoading(false)
+      if (isInitialLoad) {
+        setLoading(false)
+      }
     }
   }
 
@@ -191,7 +210,20 @@ export default function GroupScreen() {
                 onPress={() => router.push(`/activity/${activity.id}`)}
               >
                 <View style={styles.activityContent}>
-                  <Text style={styles.activityTitle}>{activity.title}</Text>
+                  <View style={styles.activityTitleRow}>
+                    <Text style={styles.activityTitle}>{activity.title}</Text>
+                    {activity.average_rating !== null && (
+                      <View style={styles.activityRating}>
+                        <StarRating 
+                          rating={activity.average_rating} 
+                          size={14} 
+                        />
+                        <Text style={styles.activityRatingCount}>
+                          ({activity.ratings_count})
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.activityMeta}>
                     By {activity.users?.display_name || 'Unknown'}
                     {activity.activity_schedules?.[0]?.start_at && 
@@ -492,11 +524,27 @@ const styles = StyleSheet.create({
   activityContent: {
     flex: 1,
   },
+  activityTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   activityTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1A1A1A',
-    marginBottom: 4,
+    flex: 1,
+  },
+  activityRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 8,
+  },
+  activityRatingCount: {
+    fontSize: 12,
+    color: '#6B7280',
   },
   activityMeta: {
     fontSize: 13,

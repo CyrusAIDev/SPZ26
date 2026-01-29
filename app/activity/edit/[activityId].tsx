@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Platform,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 import { useSupabase } from '@/hooks/useSupabase'
 import { getActivity, updateActivity } from '@/lib/supabase-helpers'
 
@@ -28,9 +29,11 @@ export default function EditActivityScreen() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadActivity()
-  }, [activityId])
+  useFocusEffect(
+    useCallback(() => {
+      loadActivity()
+    }, [activityId])
+  )
 
   const loadActivity = async () => {
     if (!activityId) {
@@ -49,9 +52,10 @@ export default function EditActivityScreen() {
         throw activityError || new Error('Activity not found')
       }
 
-      // Check if user is the creator
-      if (session?.user?.id !== data.created_by) {
-        throw new Error('You do not have permission to edit this activity')
+      // Handle activities with undefined created_by (old data)
+      // RLS will handle actual permission enforcement on save
+      if (!data.created_by) {
+        console.warn('Activity has no creator, will attempt to claim on save')
       }
 
       // Pre-fill form with existing data
@@ -98,6 +102,10 @@ export default function EditActivityScreen() {
       })
 
       if (error) {
+        // Check if it's a permission error from RLS
+        if (error.message?.includes('permission') || error.code === '42501') {
+          throw new Error('You do not have permission to edit this activity')
+        }
         throw error
       }
 
@@ -123,6 +131,12 @@ export default function EditActivityScreen() {
   if (error) {
     return (
       <View style={styles.centerContainer}>
+        <TouchableOpacity 
+          style={styles.backButtonError}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.backButtonTextError}>← Back</Text>
+        </TouchableOpacity>
         <Text style={styles.errorIcon}>⚠️</Text>
         <Text style={styles.errorTitle}>Cannot Edit Activity</Text>
         <Text style={styles.errorMessage}>{error}</Text>
@@ -265,6 +279,21 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  backButtonError: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 8,
+    zIndex: 1,
+  },
+  backButtonTextError: {
+    fontSize: 16,
+    color: '#007AFF',
     fontWeight: '600',
   },
   scrollContent: {

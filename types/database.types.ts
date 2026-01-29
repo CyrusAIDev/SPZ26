@@ -206,6 +206,38 @@ export interface Database {
           created_at?: string
         }
       }
+      activity_ratings: {
+        Row: {
+          id: string
+          activity_id: string
+          group_id: string
+          user_id: string
+          stars: number
+          note: string | null
+          rated_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          activity_id: string
+          group_id: string
+          user_id: string
+          stars: number
+          note?: string | null
+          rated_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          activity_id?: string
+          group_id?: string
+          user_id?: string
+          stars?: number
+          note?: string | null
+          rated_at?: string
+          updated_at?: string
+        }
+      }
     }
     Functions: {
       redeem_invite: {
@@ -234,6 +266,9 @@ export type Invite = Database['public']['Tables']['invites']['Row']
 export type ActivityCategory = Database['public']['Tables']['activity_categories']['Row']
 export type Activity = Database['public']['Tables']['activities']['Row']
 export type ActivitySchedule = Database['public']['Tables']['activity_schedules']['Row']
+export type ActivityRating = Database['public']['Tables']['activity_ratings']['Row']
+export type ActivityRatingInsert = Database['public']['Tables']['activity_ratings']['Insert']
+export type ActivityRatingUpdate = Database['public']['Tables']['activity_ratings']['Update']
 
 // Extended types with relations
 export type ActivityWithSchedule = Activity & {
@@ -247,6 +282,19 @@ export type ActivityWithDetails = Activity & {
     id: string
     display_name: string
   }
+}
+
+export type ActivityRatingWithUser = ActivityRating & {
+  users: {
+    id: string
+    display_name: string
+  }
+}
+
+export type ActivityWithRatings = Activity & {
+  activity_ratings: ActivityRatingWithUser[]
+  average_rating: number | null
+  ratings_count: number
 }
 
 export type RedeemInviteResult = {

@@ -161,10 +161,17 @@ export default function GroupScreen() {
             <Text style={styles.actionTitle}>Add Activity</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionCard}>
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={() => router.push(`/wheel/${groupId}`)}
+          >
             <Text style={styles.actionIcon}>🎯</Text>
             <Text style={styles.actionTitle}>Spin Wheel</Text>
-            <Text style={styles.actionSubtitle}>Coming soon</Text>
+            {activities.filter((a: any) => a.include_in_wheel).length > 0 && (
+              <Text style={styles.actionSubtitle}>
+                {activities.filter((a: any) => a.include_in_wheel).length} activities
+              </Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionCard}>

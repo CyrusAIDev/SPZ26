@@ -14,7 +14,8 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSupabase } from '@/hooks/useSupabase'
-import { createActivity } from '@/lib/supabase-helpers'
+import { createActivity, addActivitySchedule } from '@/lib/supabase-helpers'
+import { ScheduleActivityModal } from '@/app/components/ScheduleActivityModal'
 
 export default function AddActivityScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>()
@@ -25,6 +26,8 @@ export default function AddActivityScreen() {
   const [notes, setNotes] = useState('')
   const [includeInWheel, setIncludeInWheel] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [scheduleDate, setScheduleDate] = useState<Date | null>(null)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
 
   const handleCreate = async () => {
     // Validation
@@ -59,8 +62,18 @@ export default function AddActivityScreen() {
         includeInWheel
       )
 
-      if (error) {
-        throw error
+      if (error || !data) {
+        throw error || new Error('Failed to create activity')
+      }
+
+      // If schedule is set, add it
+      if (scheduleDate) {
+        await addActivitySchedule(
+          supabase,
+          data.id,
+          groupId,
+          scheduleDate.toISOString()
+        )
       }
 
       // Success - navigate back to group home
@@ -73,6 +86,25 @@ export default function AddActivityScreen() {
       setCreating(false)
     }
   }
+
+  const handleScheduleSet = (date: Date) => {
+    setScheduleDate(date)
+    setShowScheduleModal(false)
+  }
+
+  const clearSchedule = () => {
+    setScheduleDate(null)
+  }
+
+  const formattedSchedule = scheduleDate
+    ? scheduleDate.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : null
 
   return (
     <KeyboardAvoidingView
@@ -135,13 +167,39 @@ export default function AddActivityScreen() {
             />
           </View>
 
-          {/* Schedule Section - Coming Soon */}
-          <View style={styles.comingSoonSection}>
-            <Text style={styles.comingSoonIcon}>📅</Text>
-            <Text style={styles.comingSoonTitle}>Schedule (Coming Soon)</Text>
-            <Text style={styles.comingSoonText}>
-              You'll be able to add dates and times in the next update
-            </Text>
+          {/* Schedule Section */}
+          <View style={styles.scheduleSection}>
+            <Text style={styles.inputLabel}>Schedule (optional)</Text>
+            {scheduleDate ? (
+              <View style={styles.scheduleCard}>
+                <View style={styles.scheduleContent}>
+                  <Text style={styles.scheduleIcon}>📅</Text>
+                  <Text style={styles.scheduleText}>{formattedSchedule}</Text>
+                </View>
+                <View style={styles.scheduleActions}>
+                  <TouchableOpacity
+                    style={styles.scheduleButton}
+                    onPress={() => setShowScheduleModal(true)}
+                  >
+                    <Text style={styles.scheduleButtonText}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.scheduleButton, styles.clearButton]}
+                    onPress={clearSchedule}
+                  >
+                    <Text style={styles.clearButtonText}>Clear</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.addScheduleButton}
+                onPress={() => setShowScheduleModal(true)}
+              >
+                <Text style={styles.addScheduleIcon}>📅</Text>
+                <Text style={styles.addScheduleText}>Add Schedule</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Create Button */}
@@ -167,6 +225,13 @@ export default function AddActivityScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <ScheduleActivityModal
+        visible={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        onScheduleSet={handleScheduleSet}
+        initialDate={scheduleDate || undefined}
+      />
     </KeyboardAvoidingView>
   )
 }
@@ -237,6 +302,75 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
     lineHeight: 18,
+  },
+  scheduleSection: {
+    marginBottom: 32,
+  },
+  scheduleCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  scheduleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  scheduleIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  scheduleText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    flex: 1,
+  },
+  scheduleActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  scheduleButton: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  scheduleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  clearButton: {
+    backgroundColor: '#FEE2E2',
+  },
+  clearButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444',
+  },
+  addScheduleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#E5E5E5',
+    borderStyle: 'dashed',
+  },
+  addScheduleIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  addScheduleText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#3B82F6',
   },
   comingSoonSection: {
     backgroundColor: '#F0F0F0',

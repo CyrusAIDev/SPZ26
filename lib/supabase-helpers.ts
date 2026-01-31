@@ -439,6 +439,57 @@ export async function addActivitySchedule(
   }
 }
 
+/**
+ * Update an activity schedule
+ */
+export async function updateActivitySchedule(
+  supabase: SupabaseClient<Database>,
+  scheduleId: string,
+  startAt: string,
+  endAt?: string,
+  timezone?: string
+) {
+  try {
+    const { data, error } = await supabase
+      .from('activity_schedules')
+      .update({
+        start_at: startAt,
+        end_at: endAt || null,
+        timezone: timezone || null,
+      })
+      .eq('id', scheduleId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Update activity schedule error:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Delete an activity schedule
+ */
+export async function deleteActivitySchedule(
+  supabase: SupabaseClient<Database>,
+  scheduleId: string
+) {
+  try {
+    const { error } = await supabase
+      .from('activity_schedules')
+      .delete()
+      .eq('id', scheduleId)
+
+    if (error) throw error
+    return { error: null }
+  } catch (error) {
+    console.error('Delete activity schedule error:', error)
+    return { error }
+  }
+}
+
 // ==================== RATINGS ====================
 
 /**
@@ -622,6 +673,196 @@ export async function getActivityWithRatings(
     }
   } catch (error) {
     console.error('Get activity with ratings error:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get scheduled activities for a specific month
+ * Returns activities with schedules in the given month
+ */
+export async function getScheduledActivitiesForMonth(
+  supabase: SupabaseClient<Database>,
+  year: number,
+  month: number, // 1-12
+  groupId?: string
+) {
+  try {
+    // Calculate date range for the month
+    const startDate = new Date(year, month - 1, 1).toISOString()
+    const endDate = new Date(year, month, 0, 23, 59, 59).toISOString()
+
+    let query = supabase
+      .from('activity_schedules')
+      .select(`
+        *,
+        activities (
+          id,
+          title,
+          notes,
+          include_in_wheel,
+          group_id,
+          created_by,
+          groups (
+            id,
+            name
+          )
+        )
+      `)
+      .gte('start_at', startDate)
+      .lte('start_at', endDate)
+      .order('start_at', { ascending: true })
+
+    if (groupId) {
+      query = query.eq('group_id', groupId)
+    } else {
+      // Get all activities for groups user is a member of
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('No authenticated user')
+      
+      const { data: memberships } = await supabase
+        .from('group_members')
+        .select('group_id')
+        .eq('user_id', user.id)
+        .is('left_at', null)
+      
+      if (memberships && memberships.length > 0) {
+        const groupIds = memberships.map(m => m.group_id)
+        query = query.in('group_id', groupIds)
+      }
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    // Get ratings for these activities
+    const activityIds = data?.map(s => s.activity_id).filter(Boolean) || []
+    let ratingsMap: Record<string, { average: number; count: number }> = {}
+
+    if (activityIds.length > 0) {
+      const { data: ratings } = await supabase
+        .from('activity_ratings')
+        .select('activity_id, stars')
+        .in('activity_id', activityIds)
+
+      if (ratings) {
+        ratingsMap = ratings.reduce((acc, r) => {
+          if (!acc[r.activity_id]) {
+            acc[r.activity_id] = { average: 0, count: 0, sum: 0 }
+          }
+          acc[r.activity_id].sum += r.stars
+          acc[r.activity_id].count += 1
+          acc[r.activity_id].average = acc[r.activity_id].sum / acc[r.activity_id].count
+          return acc
+        }, {} as Record<string, any>)
+      }
+    }
+
+    // Enrich with ratings
+    const enrichedData = data?.map(schedule => ({
+      ...schedule,
+      average_rating: ratingsMap[schedule.activity_id]?.average || null,
+      ratings_count: ratingsMap[schedule.activity_id]?.count || 0,
+    })) || []
+
+    return { data: enrichedData, error: null }
+  } catch (error) {
+    console.error('Get scheduled activities for month error:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get activities scheduled for a specific date
+ */
+export async function getActivitiesForDate(
+  supabase: SupabaseClient<Database>,
+  date: string, // YYYY-MM-DD format
+  groupId?: string
+) {
+  try {
+    // Get start and end of day in UTC
+    const startOfDay = new Date(date + 'T00:00:00.000Z').toISOString()
+    const endOfDay = new Date(date + 'T23:59:59.999Z').toISOString()
+
+    let query = supabase
+      .from('activity_schedules')
+      .select(`
+        *,
+        activities (
+          id,
+          title,
+          notes,
+          include_in_wheel,
+          group_id,
+          created_by,
+          groups (
+            id,
+            name
+          )
+        )
+      `)
+      .gte('start_at', startOfDay)
+      .lte('start_at', endOfDay)
+      .order('start_at', { ascending: true })
+
+    if (groupId) {
+      query = query.eq('group_id', groupId)
+    } else {
+      // Get all activities for groups user is a member of
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('No authenticated user')
+      
+      const { data: memberships } = await supabase
+        .from('group_members')
+        .select('group_id')
+        .eq('user_id', user.id)
+        .is('left_at', null)
+      
+      if (memberships && memberships.length > 0) {
+        const groupIds = memberships.map(m => m.group_id)
+        query = query.in('group_id', groupIds)
+      }
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    // Get ratings for these activities
+    const activityIds = data?.map(s => s.activity_id).filter(Boolean) || []
+    let ratingsMap: Record<string, { average: number; count: number }> = {}
+
+    if (activityIds.length > 0) {
+      const { data: ratings } = await supabase
+        .from('activity_ratings')
+        .select('activity_id, stars')
+        .in('activity_id', activityIds)
+
+      if (ratings) {
+        ratingsMap = ratings.reduce((acc, r) => {
+          if (!acc[r.activity_id]) {
+            acc[r.activity_id] = { average: 0, count: 0, sum: 0 }
+          }
+          acc[r.activity_id].sum += r.stars
+          acc[r.activity_id].count += 1
+          acc[r.activity_id].average = acc[r.activity_id].sum / acc[r.activity_id].count
+          return acc
+        }, {} as Record<string, any>)
+      }
+    }
+
+    // Enrich with ratings
+    const enrichedData = data?.map(schedule => ({
+      ...schedule,
+      average_rating: ratingsMap[schedule.activity_id]?.average || null,
+      ratings_count: ratingsMap[schedule.activity_id]?.count || 0,
+    })) || []
+
+    return { data: enrichedData, error: null }
+  } catch (error) {
+    console.error('Get activities for date error:', error)
     return { data: null, error }
   }
 }
